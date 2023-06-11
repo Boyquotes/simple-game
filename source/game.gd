@@ -22,9 +22,9 @@ func _ready() -> void:
 func start_game() -> void:
 	create_fields.rpc(Lobby.players)
 	
-	deck = Deck.new()
+	deck = Deck.new(players.size())
 	for player in players:
-		for i in range(8):
+		for i in range(4):
 			draw_card(player)
 	
 	var id = players[randi_range(0, players.size() - 1)].id
@@ -76,14 +76,39 @@ func draw_card(player: Player) -> void:
 		$Hand.add_card.rpc_id(player.id, card_info)
 
 
+@rpc("call_local")
+func move_card(from_field_idx: int, from_zone_idx: int, to_field_idx: int, to_zone_idx: int) -> void:
+	const TWEEN_DURATION = 0.2
+	
+	if fields[from_field_idx].cards[from_zone_idx] == null:
+		return
+	
+	var card: HandCard = fields[from_field_idx].cards[from_zone_idx]
+	var to_field = fields[to_field_idx]
+	
+	var pos_tween = get_tree().create_tween()
+	var new_pos = to_field.to_global(to_field.zone_positions[to_zone_idx] + to_field.zone_size / 2)
+	pos_tween.tween_property(card, "position", new_pos, TWEEN_DURATION)
+	
+	var rot_tween = get_tree().create_tween()
+	var new_rotation = to_field.rotation
+	rot_tween.tween_property(card, "rotation", new_rotation, TWEEN_DURATION)
+
+
 @rpc("any_peer")
 func play_from_hand(index_in_hand: int) -> void:
 	var acting_player_index: int
 	if multiplayer.get_remote_sender_id() == 0:
 		acting_player_index = 0
-		$Hand.remove_card(index_in_hand)
 	else:
 		acting_player_index = Lobby.players[multiplayer.get_remote_sender_id()]["index"]
+	
+	if not fields[acting_player_index].cards.slice(0, 2).has(null):
+		return
+	
+	if acting_player_index == 0:
+		$Hand.remove_card(index_in_hand)
+	else:
 		$Hand.remove_card.rpc_id(multiplayer.get_remote_sender_id(), index_in_hand)
 	
 	var card: Card = players[acting_player_index].hand[index_in_hand]
@@ -95,9 +120,8 @@ func play_from_hand(index_in_hand: int) -> void:
 func play_card(card_info: Dictionary, field_index: int) -> void:
 	var card:= HandCard.new(Card.new(card_info["color"], card_info["shape"]))
 	var field = fields[field_index]
-	var row = field.front_row
-	var index = row.find(null)
-	row[index] = card
+	var index = field.cards.slice(0, 2).find(null)
+	field.cards[index] = card
 	card.draggable = false
 	card.position = field.to_global(field.zone_positions[index] + field.zone_size / 2)
 	card.scale = Vector2(0.4, 0.4)
@@ -149,7 +173,23 @@ func _on_swap_button_pressed() -> void:
 
 @rpc("any_peer")
 func action_swap() -> void:
-	pass
+	var acting_player_index: int
+	if multiplayer.get_remote_sender_id() == 0:
+		acting_player_index = 0
+	else:
+		acting_player_index = Lobby.players[multiplayer.get_remote_sender_id()]["index"]
+	
+	move_card.rpc(acting_player_index, 0, acting_player_index, 1)
+	move_card.rpc(acting_player_index, 1, acting_player_index, 0)
+	
+	swap_cards.rpc(acting_player_index, 0, 1)
+
+
+@rpc("call_local")
+func swap_cards(acting_player_index: int, from_zone: int, to_zone: int) -> void:
+	var swap = fields[acting_player_index].cards[from_zone]
+	fields[acting_player_index].cards[from_zone] = fields[acting_player_index].cards[to_zone]
+	fields[acting_player_index].cards[to_zone] = swap
 
 
 func _on_take_button_pressed() -> void:

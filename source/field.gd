@@ -4,8 +4,8 @@ class_name Field
 
 
 
-var back_row: Array = [null, null, null, null]
-var front_row: Array = [null, null]
+var cards: Array = [null, null, null, null, null, null]
+
 
 var player_name: String:
 	set(new_player_name):
